@@ -366,7 +366,7 @@ class GPUStatCollection(object):
                 return b.decode('utf-8')    # for python3, to unicode
             return b
 
-        def get_gpu_info(handle):
+        def get_gpu_info(handle, parent_info=None):
             """Get one GPU information specified by nvml handle"""
 
             def get_process_info(nv_process):
@@ -401,15 +401,21 @@ class GPUStatCollection(object):
                 process['pid'] = nv_process.pid
                 return process
 
-            name = _decode(N.nvmlDeviceGetName(handle))
             uuid = _decode(N.nvmlDeviceGetUUID(handle))
+            try:
+                name = _decode(N.nvmlDeviceGetName(handle))
+            except:
+                name = uuid
 
             try:
                 temperature = N.nvmlDeviceGetTemperature(
                     handle, N.NVML_TEMPERATURE_GPU
                 )
             except N.NVMLError:
-                temperature = None  # Not supported
+                if parent_info is not None:
+                    temperature = parent_info["temperature.gpu"]
+                else:
+                    temperature = None  # Not supported
 
             try:
                 fan_speed = N.nvmlDeviceGetFanSpeed(handle)
@@ -494,10 +500,12 @@ class GPUStatCollection(object):
                     process['cpu_percent'] = cache_process.cpu_percent()
 
             index = N.nvmlDeviceGetIndex(handle)
+            mig = N.nvmlDeviceIsMigDeviceHandle(handle).value
             gpu_info = {
                 'index': index,
                 'uuid': uuid,
                 'name': name,
+                'mig': mig,
                 'temperature.gpu': temperature,
                 'fan.speed': fan_speed,
                 'utilization.gpu': utilization.gpu if utilization else None,
@@ -522,9 +530,23 @@ class GPUStatCollection(object):
 
         for index in range(device_count):
             handle = N.nvmlDeviceGetHandleByIndex(index)
-            gpu_info = get_gpu_info(handle)
-            gpu_stat = GPUStat(gpu_info)
-            gpu_list.append(gpu_stat)
+            current_mode, _ = N.nvmlDeviceGetMigMode(handle)
+            if current_mode == N.NVML_DEVICE_MIG_ENABLE:
+                max_MIG = N.nvmlDeviceGetMaxMigDeviceCount(handle)
+                parent_info = get_gpu_info(handle)
+
+                for MIG_index in range(max_MIG):
+                    try:
+                        mig_handle = N.nvmlDeviceGetMigDeviceHandleByIndex(handle, MIG_index)
+                        gpu_info = get_gpu_info(mig_handle, parent_info)
+                        gpu_stat = GPUStat(gpu_info)
+                        gpu_list.append(gpu_stat)
+                    except:
+                        pass
+            else:
+                gpu_info = get_gpu_info(handle)
+                gpu_stat = GPUStat(gpu_info)
+                gpu_list.append(gpu_stat)
 
         # 2. additional info (driver version, etc).
         try:
