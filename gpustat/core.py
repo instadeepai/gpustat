@@ -430,7 +430,7 @@ class GPUStatCollection(object):
             try:
                 utilization = N.nvmlDeviceGetUtilizationRates(handle)
             except N.NVMLError:
-                utilization = None  # Not supported
+                utilization = N.c_nvmlUtilization_t()  # zero value so that ray don't crash
 
             try:
                 utilization_enc = N.nvmlDeviceGetEncoderUtilization(handle)
