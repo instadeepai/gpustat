@@ -464,7 +464,7 @@ class GPUStatCollection(object):
                 nv_graphics_processes = None  # Not supported
 
             if nv_comp_processes is None and nv_graphics_processes is None:
-                processes = None
+                processes = []
             else:
                 processes = []
                 nv_comp_processes = nv_comp_processes or []
